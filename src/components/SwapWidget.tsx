@@ -23,7 +23,7 @@ import StatusCard from './StatusCard';
 export default function SwapWidget() {
     const [state, setState] = useState<SwapState>({
         stage: 'estimate',
-        fromCurrency: 'btc',
+        fromCurrency: 'sol',
         fromAmount: '',
         estimatedAmount: '',
         walletAddress: '',
@@ -349,7 +349,7 @@ export default function SwapWidget() {
     function handleReset() {
         setState({
             stage: 'estimate',
-            fromCurrency: 'btc',
+            fromCurrency: 'sol',
             fromAmount: '',
             estimatedAmount: '',
             walletAddress: '',

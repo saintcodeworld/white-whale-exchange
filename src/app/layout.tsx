@@ -3,12 +3,15 @@ import "./globals.css";
 import CustomCursor from "@/components/CustomCursor";
 
 export const metadata: Metadata = {
-  title: "Whale-Bridge | Swap Any Crypto to $WHITEWHALE",
+  title: "WHITEWHALE",
   description:
     "The fastest cross-chain bridge to swap BTC, ETH, SOL and more directly into $WHITEWHALE on Solana. Deep sea tech, powered by ChangeNow.",
   keywords: ["WhiteWhale", "crypto swap", "bridge", "Solana", "BTC", "ETH", "SOL", "USDC", "ChangeNow"],
+  icons: {
+    icon: "/ww back.png",
+  },
   openGraph: {
-    title: "Whale-Bridge | Cross-Chain Gateway to $WHITEWHALE",
+    title: "WHITEWHALE",
     description: "Swap any crypto directly into $WHITEWHALE on Solana.",
     type: "website",
   },

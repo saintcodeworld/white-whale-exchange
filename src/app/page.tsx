@@ -150,7 +150,7 @@ export default function Home() {
           {/* Community & The White Whale Buttons */}
           <div className="flex items-center justify-center gap-4 mt-10">
             <a
-              href="https://t.me/whitewhalesol"
+              href="https://x.com/i/communities/1997736986749124846"
               target="_blank"
               rel="noopener noreferrer"
               className="px-8 py-3 rounded-xl font-cartoon text-base md:text-lg tracking-wider transition-all duration-300 hover:scale-[1.04]"
@@ -165,7 +165,7 @@ export default function Home() {
               Community
             </a>
             <a
-              href="https://whitewhalememe.com"
+              href="https://x.com/White_Whale_Dev"
               target="_blank"
               rel="noopener noreferrer"
               className="px-8 py-3 rounded-xl font-cartoon text-base md:text-lg tracking-wider transition-all duration-300 hover:scale-[1.04]"
