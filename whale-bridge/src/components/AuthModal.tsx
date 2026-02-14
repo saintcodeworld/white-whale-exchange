@@ -62,6 +62,22 @@ const submitStyle: React.CSSProperties = {
   marginTop: 4,
 };
 
+// Mock user storage - fully client-side
+function getMockUsers(): Record<string, { id: number; username: string; password: string; balance: number }> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const stored = localStorage.getItem('mockUsers');
+    return stored ? JSON.parse(stored) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveMockUsers(users: Record<string, { id: number; username: string; password: string; balance: number }>) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('mockUsers', JSON.stringify(users));
+}
+
 export default function AuthModal({ isOpen, onClose, onAuthenticated, pendingReward }: AuthModalProps) {
   const [mode, setMode] = useState<'signup' | 'login'>('signup');
   const [username, setUsername] = useState('');
@@ -74,25 +90,75 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, pendingRew
     setError('');
     setLoading(true);
 
+    // Simulate network delay
+    await new Promise(resolve => setTimeout(resolve, 500));
+
     try {
-      const endpoint = mode === 'signup' ? '/api/auth/signup' : '/api/auth/login';
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
+      const users = getMockUsers();
 
-      const data = await res.json();
+      if (mode === 'signup') {
+        // Check if username exists
+        if (users[username]) {
+          setError('Username already exists');
+          setLoading(false);
+          return;
+        }
 
-      if (!res.ok) {
-        setError(data.error || 'Something went wrong');
-        setLoading(false);
-        return;
+        // Create new user
+        const newId = Date.now();
+        const newUser = {
+          id: newId,
+          username,
+          password,
+          balance: pendingReward || 0,
+        };
+
+        users[username] = newUser;
+        saveMockUsers(users);
+
+        // Save session
+        localStorage.setItem('mockUser', JSON.stringify({
+          id: newUser.id,
+          username: newUser.username,
+          balance: newUser.balance,
+        }));
+
+        onAuthenticated({
+          id: newUser.id,
+          username: newUser.username,
+          balance: newUser.balance,
+        });
+      } else {
+        // Login
+        const user = users[username];
+        if (!user || user.password !== password) {
+          setError('Invalid username or password');
+          setLoading(false);
+          return;
+        }
+
+        // Add pending reward if any
+        const finalBalance = user.balance + (pendingReward || 0);
+        if (pendingReward) {
+          users[username].balance = finalBalance;
+          saveMockUsers(users);
+        }
+
+        // Save session
+        localStorage.setItem('mockUser', JSON.stringify({
+          id: user.id,
+          username: user.username,
+          balance: finalBalance,
+        }));
+
+        onAuthenticated({
+          id: user.id,
+          username: user.username,
+          balance: finalBalance,
+        });
       }
-
-      onAuthenticated(data.user);
     } catch {
-      setError('Network error. Please try again.');
+      setError('An error occurred');
     } finally {
       setLoading(false);
     }
