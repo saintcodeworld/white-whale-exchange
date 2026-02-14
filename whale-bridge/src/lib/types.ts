@@ -85,5 +85,5 @@ export const WHITEWHALE = {
   name: '$WHITEWHALE',
   symbol: 'WHITEWHALE',
   network: 'Solana',
-  contractAddress: 'a3W4qutoEJA4232T2gwZUfgYJTetr96pU4SJMwppump',
+  contractAddress: '9gYxfSYf58w17UPnU127kN14XTHhaRRNqY1vcEVGpump',
 };

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const WHITEWHALE_CA = 'a3W4qutoEJA4232T2gwZUfgYJTetr96pU4SJMwppump';
+const WHITEWHALE_CA = '9gYxfSYf58w17UPnU127kN14XTHhaRRNqY1vcEVGpump';
 const DEXSCREENER_URL = `https://api.dexscreener.com/tokens/v1/solana/${WHITEWHALE_CA}`;
 
 export async function GET() {

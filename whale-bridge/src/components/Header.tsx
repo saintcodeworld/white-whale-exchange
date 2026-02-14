@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Check, Copy } from 'lucide-react';
 
-const CONTRACT_ADDRESS = 'a3W4qutoEJA4232T2gwZUfgYJTetr96pU4SJMwppump';
+const CONTRACT_ADDRESS = '9gYxfSYf58w17UPnU127kN14XTHhaRRNqY1vcEVGpump';
 
 export default function Header() {
     const [copied, setCopied] = useState(false);
@@ -59,7 +59,7 @@ export default function Header() {
                         LEADERBOARD
                     </a>
                     <a
-                        href="https://dexscreener.com/solana/a3W4qutoEJA4232T2gwZUfgYJTetr96pU4SJMwppump"
+                        href="https://dexscreener.com/solana/9gYxfSYf58w17UPnU127kN14XTHhaRRNqY1vcEVGpump"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="header-nav-link font-cartoon"
