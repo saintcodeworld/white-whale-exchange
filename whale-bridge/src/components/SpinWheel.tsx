@@ -36,6 +36,7 @@ const SEGMENTS: Segment[] = [
 
 const NUM_SEGMENTS = SEGMENTS.length;
 const SEGMENT_ANGLE = 360 / NUM_SEGMENTS;
+const COOLDOWN_MS = 12 * 60 * 60 * 1000; // 12 hours
 
 /* ═══════════════════════════════════════════════
    Confetti Particle
@@ -68,35 +69,30 @@ function generateParticles(count: number, glowColor: string): Particle[] {
 }
 
 /* ═══════════════════════════════════════════════
-   Mock localStorage helpers for demo
+   Client-side localStorage helpers
    ═══════════════════════════════════════════════ */
-const STORAGE_KEY = 'whitewhale_spin_mock';
+const STORAGE_KEY = 'whitewhale_spin_v2';
 
 interface SpinData {
-  lastSpin: string;
+  lastSpinTime: number; // timestamp
   totalEarned: number;
   spinCount: number;
   streak: number;
-  mockBalance: number;
-  lastCooldownTime: number;
+  balance: number;
 }
 
 function getSpinData(): SpinData {
-  if (typeof window === 'undefined') return { lastSpin: '', totalEarned: 0, spinCount: 0, streak: 0, mockBalance: 0, lastCooldownTime: 0 };
+  if (typeof window === 'undefined') return { lastSpinTime: 0, totalEarned: 0, spinCount: 0, streak: 0, balance: 0 };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch { /* ignore */ }
-  return { lastSpin: '', totalEarned: 0, spinCount: 0, streak: 0, mockBalance: 0, lastCooldownTime: 0 };
+  return { lastSpinTime: 0, totalEarned: 0, spinCount: 0, streak: 0, balance: 0 };
 }
 
 function saveSpinData(data: SpinData) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-}
-
-function getTodayKey(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 function formatCountdown(ms: number): string {
@@ -108,9 +104,9 @@ function formatCountdown(ms: number): string {
 }
 
 /* ═══════════════════════════════════════════════
-   Mock weighted random picker
+   Client-side weighted random picker
    ═══════════════════════════════════════════════ */
-function mockPickSpin(): { index: number; value: number; rarity: string } {
+function pickRandomSpin(): { index: number; value: number; rarity: string } {
   const totalWeight = SEGMENTS.reduce((sum, s) => sum + s.weight, 0);
   let rand = Math.random() * totalWeight;
   for (let i = 0; i < SEGMENTS.length; i++) {
@@ -131,7 +127,7 @@ const RARITY_STYLES: Record<string, { bg: string; border: string; text: string; 
 };
 
 /* ═══════════════════════════════════════════════
-   SpinWheel Component (Mock Version)
+   SpinWheel Component (Fully Client-Side)
    ═══════════════════════════════════════════════ */
 export default function SpinWheel() {
   const [rotation, setRotation] = useState(0);
@@ -140,11 +136,11 @@ export default function SpinWheel() {
   const [showResult, setShowResult] = useState(false);
   const [particles, setParticles] = useState<Particle[]>([]);
   const [hasSpunToday, setHasSpunToday] = useState(false);
-  const [spinData, setSpinData] = useState<SpinData>({ lastSpin: '', totalEarned: 0, spinCount: 0, streak: 0, mockBalance: 0, lastCooldownTime: 0 });
+  const [spinData, setSpinData] = useState<SpinData>({ lastSpinTime: 0, totalEarned: 0, spinCount: 0, streak: 0, balance: 0 });
   const [countdown, setCountdown] = useState('');
   const [cooldownEndTime, setCooldownEndTime] = useState<number | null>(null);
   const [mounted, setMounted] = useState(false);
-  const [priceNative, setPriceNative] = useState<number>(0.00015); // Mock price
+  const [priceNative] = useState<number>(0.00015); // Mock price
   const [user, setUser] = useState<{ id: number; username: string; balance: number } | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
@@ -156,35 +152,29 @@ export default function SpinWheel() {
   const toSol = useCallback((tokens: number): string => {
     if (!priceNative) return '...';
     const sol = tokens * priceNative;
-    return sol.toFixed(2) + ' SOL';
+    return sol.toFixed(4) + ' SOL';
   }, [priceNative]);
 
-  // Initialize mock data
+  // Initialize from localStorage (fully client-side)
   useEffect(() => {
     setMounted(true);
     const data = getSpinData();
     setSpinData(data);
 
-    // Check if user is logged in (mock)
+    // Check if user is logged in (from localStorage)
     const mockUser = localStorage.getItem('mockUser');
     if (mockUser) {
-      setUser(JSON.parse(mockUser));
+      try {
+        setUser(JSON.parse(mockUser));
+      } catch { /* ignore */ }
     }
 
-    // Check cooldown (12 hours)
+    // Check cooldown from localStorage
     const now = Date.now();
-    if (data.lastCooldownTime && (now - data.lastCooldownTime) < 12 * 60 * 60 * 1000) {
+    if (data.lastSpinTime && (now - data.lastSpinTime) < COOLDOWN_MS) {
       setHasSpunToday(true);
-      setCooldownEndTime(data.lastCooldownTime + 12 * 60 * 60 * 1000);
+      setCooldownEndTime(data.lastSpinTime + COOLDOWN_MS);
     }
-  }, []);
-
-  // Mock price update
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setPriceNative(0.00015 + Math.random() * 0.00002);
-    }, 30000);
-    return () => clearInterval(interval);
   }, []);
 
   // Countdown timer
@@ -254,6 +244,7 @@ export default function SpinWheel() {
     } catch { /* audio not available */ }
   }, []);
 
+  // Handle spin (fully client-side)
   const handleSpin = useCallback(() => {
     if (isSpinning || hasSpunToday) return;
 
@@ -262,8 +253,8 @@ export default function SpinWheel() {
     setShowResult(false);
     setParticles([]);
 
-    // Mock spin result
-    const spinResult = mockPickSpin();
+    // Client-side spin result
+    const spinResult = pickRandomSpin();
     const winIndex = spinResult.index;
     const segment = SEGMENTS[winIndex];
 
@@ -286,30 +277,33 @@ export default function SpinWheel() {
       setParticles(generateParticles(segment.rarity === 'legendary' ? 60 : segment.rarity === 'rare' ? 40 : 20, segment.glowColor));
       playWinSound(segment.rarity);
 
-      // Update mock data
-      const today = getTodayKey();
+      // Update localStorage data
       const prevData = getSpinData();
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayKey = yesterday.toISOString().slice(0, 10);
-      const newStreak = prevData.lastSpin === yesterdayKey ? prevData.streak + 1 : 1;
+      const now = Date.now();
+      
+      // Calculate streak
+      const oneDayMs = 24 * 60 * 60 * 1000;
+      const lastSpinDate = prevData.lastSpinTime ? new Date(prevData.lastSpinTime).toDateString() : '';
+      const yesterdayDate = new Date(now - oneDayMs).toDateString();
+      const newStreak = lastSpinDate === yesterdayDate ? prevData.streak + 1 : 1;
 
       const newData: SpinData = {
-        lastSpin: today,
+        lastSpinTime: now,
         totalEarned: prevData.totalEarned + segment.value,
         spinCount: prevData.spinCount + 1,
         streak: newStreak,
-        mockBalance: prevData.mockBalance + segment.value,
-        lastCooldownTime: Date.now(),
+        balance: prevData.balance + segment.value,
       };
       saveSpinData(newData);
       setSpinData(newData);
       setHasSpunToday(true);
-      setCooldownEndTime(Date.now() + 12 * 60 * 60 * 1000);
+      setCooldownEndTime(now + COOLDOWN_MS);
 
       // Update user balance if logged in
       if (user) {
-        setUser(prev => prev ? { ...prev, balance: prev.balance + segment.value } : null);
+        const newUser = { ...user, balance: user.balance + segment.value };
+        setUser(newUser);
+        localStorage.setItem('mockUser', JSON.stringify(newUser));
       }
 
       setTimeout(() => setShowResult(true), 300);
@@ -331,28 +325,32 @@ export default function SpinWheel() {
     }
   }, [result, user]);
 
-  // After successful signup/login (mock)
+  // After successful signup/login
   const handleAuthenticated = useCallback((authUser: { id: number; username: string; balance: number }) => {
-    setUser(authUser);
-    localStorage.setItem('mockUser', JSON.stringify(authUser));
+    // Add pending reward to balance
+    const finalBalance = authUser.balance + (pendingReward || 0);
+    const finalUser = { ...authUser, balance: finalBalance };
+    setUser(finalUser);
+    localStorage.setItem('mockUser', JSON.stringify(finalUser));
     setShowAuthModal(false);
-
-    // Auto-claim pending reward
-    if (pendingReward) {
-      setUser(prev => prev ? { ...prev, balance: prev.balance + pendingReward } : null);
-      setPendingReward(null);
-    }
+    setPendingReward(null);
   }, [pendingReward]);
 
   // Mock withdrawal handler
   const handleWithdraw = useCallback((amount: number, walletAddress: string) => {
     if (user && user.balance >= amount) {
       const newBalance = user.balance - amount;
-      setUser({ ...user, balance: newBalance });
-      localStorage.setItem('mockUser', JSON.stringify({ ...user, balance: newBalance }));
+      const newUser = { ...user, balance: newBalance };
+      setUser(newUser);
+      localStorage.setItem('mockUser', JSON.stringify(newUser));
       
-      // Show success message
-      alert(`Withdrawal of ${amount} $WHITEWHALE to ${walletAddress} simulated successfully!`);
+      // Also update spinData balance
+      const data = getSpinData();
+      data.balance = Math.max(0, data.balance - amount);
+      saveSpinData(data);
+      setSpinData(data);
+      
+      console.log(`Withdrawal simulated: ${amount} $WHITEWHALE to ${walletAddress}`);
       return true;
     }
     return false;
