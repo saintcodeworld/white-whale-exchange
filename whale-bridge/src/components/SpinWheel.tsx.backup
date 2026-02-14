@@ -68,26 +68,24 @@ function generateParticles(count: number, glowColor: string): Particle[] {
 }
 
 /* ═══════════════════════════════════════════════
-   Mock localStorage helpers for demo
+   localStorage helpers (stats only — NOT for cooldown)
    ═══════════════════════════════════════════════ */
-const STORAGE_KEY = 'whitewhale_spin_mock';
+const STORAGE_KEY = 'whitewhale_spin';
 
 interface SpinData {
   lastSpin: string;
   totalEarned: number;
   spinCount: number;
   streak: number;
-  mockBalance: number;
-  lastCooldownTime: number;
 }
 
 function getSpinData(): SpinData {
-  if (typeof window === 'undefined') return { lastSpin: '', totalEarned: 0, spinCount: 0, streak: 0, mockBalance: 0, lastCooldownTime: 0 };
+  if (typeof window === 'undefined') return { lastSpin: '', totalEarned: 0, spinCount: 0, streak: 0 };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch { /* ignore */ }
-  return { lastSpin: '', totalEarned: 0, spinCount: 0, streak: 0, mockBalance: 0, lastCooldownTime: 0 };
+  return { lastSpin: '', totalEarned: 0, spinCount: 0, streak: 0 };
 }
 
 function saveSpinData(data: SpinData) {
@@ -108,16 +106,38 @@ function formatCountdown(ms: number): string {
 }
 
 /* ═══════════════════════════════════════════════
-   Mock weighted random picker
+   Browser fingerprint (canvas + screen + timezone)
    ═══════════════════════════════════════════════ */
-function mockPickSpin(): { index: number; value: number; rarity: string } {
-  const totalWeight = SEGMENTS.reduce((sum, s) => sum + s.weight, 0);
-  let rand = Math.random() * totalWeight;
-  for (let i = 0; i < SEGMENTS.length; i++) {
-    rand -= SEGMENTS[i].weight;
-    if (rand <= 0) return { index: i, value: SEGMENTS[i].value, rarity: SEGMENTS[i].rarity };
+function getBrowserFingerprint(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const parts: string[] = [];
+    parts.push(navigator.userAgent);
+    parts.push(navigator.language);
+    parts.push(`${screen.width}x${screen.height}x${screen.colorDepth}`);
+    parts.push(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    parts.push(navigator.hardwareConcurrency?.toString() ?? '0');
+    // Canvas fingerprint
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.textBaseline = 'top';
+      ctx.font = '14px Arial';
+      ctx.fillText('WhiteWhale🐋', 2, 2);
+      parts.push(canvas.toDataURL());
+    }
+    // Simple hash
+    const str = parts.join('|');
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const chr = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + chr;
+      hash |= 0;
+    }
+    return hash.toString(36);
+  } catch {
+    return '';
   }
-  return { index: 0, value: SEGMENTS[0].value, rarity: SEGMENTS[0].rarity };
 }
 
 /* ═══════════════════════════════════════════════
@@ -131,7 +151,7 @@ const RARITY_STYLES: Record<string, { bg: string; border: string; text: string; 
 };
 
 /* ═══════════════════════════════════════════════
-   SpinWheel Component (Mock Version)
+   SpinWheel Component
    ═══════════════════════════════════════════════ */
 export default function SpinWheel() {
   const [rotation, setRotation] = useState(0);
@@ -140,11 +160,12 @@ export default function SpinWheel() {
   const [showResult, setShowResult] = useState(false);
   const [particles, setParticles] = useState<Particle[]>([]);
   const [hasSpunToday, setHasSpunToday] = useState(false);
-  const [spinData, setSpinData] = useState<SpinData>({ lastSpin: '', totalEarned: 0, spinCount: 0, streak: 0, mockBalance: 0, lastCooldownTime: 0 });
+  const [spinData, setSpinData] = useState<SpinData>({ lastSpin: '', totalEarned: 0, spinCount: 0, streak: 0 });
   const [countdown, setCountdown] = useState('');
   const [cooldownEndTime, setCooldownEndTime] = useState<number | null>(null);
   const [mounted, setMounted] = useState(false);
-  const [priceNative, setPriceNative] = useState<number>(0.00015); // Mock price
+  const fingerprintRef = useRef<string>('');
+  const [priceNative, setPriceNative] = useState<number | null>(null);
   const [user, setUser] = useState<{ id: number; username: string; balance: number } | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
@@ -159,35 +180,49 @@ export default function SpinWheel() {
     return sol.toFixed(2) + ' SOL';
   }, [priceNative]);
 
-  // Initialize mock data
+  // Initialize — check server-side cooldown
   useEffect(() => {
     setMounted(true);
     const data = getSpinData();
     setSpinData(data);
+    fingerprintRef.current = getBrowserFingerprint();
 
-    // Check if user is logged in (mock)
-    const mockUser = localStorage.getItem('mockUser');
-    if (mockUser) {
-      setUser(JSON.parse(mockUser));
-    }
+    // Check if user is logged in
+    fetch('/api/auth/me').then(r => r.json()).then(data => {
+      if (data.user) setUser(data.user);
+    }).catch(() => {});
 
-    // Check cooldown (12 hours)
-    const now = Date.now();
-    if (data.lastCooldownTime && (now - data.lastCooldownTime) < 12 * 60 * 60 * 1000) {
-      setHasSpunToday(true);
-      setCooldownEndTime(data.lastCooldownTime + 12 * 60 * 60 * 1000);
-    }
+    // Check server-side cooldown status
+    fetch('/api/spin/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fingerprint: getBrowserFingerprint() }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.canSpin && data.remainingMs > 0) {
+          setHasSpunToday(true);
+          setCooldownEndTime(Date.now() + data.remainingMs);
+        }
+      })
+      .catch(() => {});
   }, []);
 
-  // Mock price update
+  // Fetch live WHITEWHALE price in SOL
   useEffect(() => {
-    const interval = setInterval(() => {
-      setPriceNative(0.00015 + Math.random() * 0.00002);
-    }, 30000);
+    async function fetchPrice() {
+      try {
+        const res = await fetch('/api/dexscreener');
+        const data = await res.json();
+        if (data.priceNative) setPriceNative(parseFloat(data.priceNative));
+      } catch { /* silent */ }
+    }
+    fetchPrice();
+    const interval = setInterval(fetchPrice, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  // Countdown timer
+  // Countdown timer — uses server-provided cooldown end time
   useEffect(() => {
     if (!hasSpunToday || !cooldownEndTime) return;
     const tick = () => {
@@ -254,7 +289,7 @@ export default function SpinWheel() {
     } catch { /* audio not available */ }
   }, []);
 
-  const handleSpin = useCallback(() => {
+  const handleSpin = useCallback(async () => {
     if (isSpinning || hasSpunToday) return;
 
     setIsSpinning(true);
@@ -262,58 +297,77 @@ export default function SpinWheel() {
     setShowResult(false);
     setParticles([]);
 
-    // Mock spin result
-    const spinResult = mockPickSpin();
-    const winIndex = spinResult.index;
-    const segment = SEGMENTS[winIndex];
+    try {
+      // Ask server to execute the spin (server picks the result + enforces cooldown)
+      const res = await fetch('/api/spin/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprint: fingerprintRef.current }),
+      });
 
-    // Calculate target rotation
-    const segmentCenter = winIndex * SEGMENT_ANGLE + SEGMENT_ANGLE / 2;
-    const extraSpins = 5 + Math.floor(Math.random() * 3);
-    const jitter = (Math.random() - 0.5) * (SEGMENT_ANGLE * 0.6);
-    const targetRotation = rotation + extraSpins * 360 + (360 - segmentCenter) + jitter;
-
-    setRotation(targetRotation);
-
-    // Tick sounds during spin
-    const tickInterval = setInterval(playTick, 80);
-
-    // Reveal result after spin animation
-    setTimeout(() => {
-      clearInterval(tickInterval);
-      setIsSpinning(false);
-      setResult(segment);
-      setParticles(generateParticles(segment.rarity === 'legendary' ? 60 : segment.rarity === 'rare' ? 40 : 20, segment.glowColor));
-      playWinSound(segment.rarity);
-
-      // Update mock data
-      const today = getTodayKey();
-      const prevData = getSpinData();
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayKey = yesterday.toISOString().slice(0, 10);
-      const newStreak = prevData.lastSpin === yesterdayKey ? prevData.streak + 1 : 1;
-
-      const newData: SpinData = {
-        lastSpin: today,
-        totalEarned: prevData.totalEarned + segment.value,
-        spinCount: prevData.spinCount + 1,
-        streak: newStreak,
-        mockBalance: prevData.mockBalance + segment.value,
-        lastCooldownTime: Date.now(),
-      };
-      saveSpinData(newData);
-      setSpinData(newData);
-      setHasSpunToday(true);
-      setCooldownEndTime(Date.now() + 12 * 60 * 60 * 1000);
-
-      // Update user balance if logged in
-      if (user) {
-        setUser(prev => prev ? { ...prev, balance: prev.balance + segment.value } : null);
+      if (!res.ok) {
+        const errData = await res.json();
+        if (res.status === 429 && errData.remainingMs) {
+          // Cooldown is active — server rejected
+          setHasSpunToday(true);
+          setCooldownEndTime(Date.now() + errData.remainingMs);
+        }
+        setIsSpinning(false);
+        return;
       }
 
-      setTimeout(() => setShowResult(true), 300);
-    }, 5500);
+      const spinResult = await res.json();
+      const winIndex: number = spinResult.index;
+      const segment = SEGMENTS[winIndex];
+
+      // Calculate target rotation using server-provided index
+      const segmentCenter = winIndex * SEGMENT_ANGLE + SEGMENT_ANGLE / 2;
+      const extraSpins = 5 + Math.floor(Math.random() * 3);
+      const jitter = (Math.random() - 0.5) * (SEGMENT_ANGLE * 0.6);
+      const targetRotation = rotation + extraSpins * 360 + (360 - segmentCenter) + jitter;
+
+      setRotation(targetRotation);
+
+      // Tick sounds during spin
+      const tickInterval = setInterval(playTick, 80);
+
+      // Reveal result after spin animation
+      setTimeout(() => {
+        clearInterval(tickInterval);
+        setIsSpinning(false);
+        setResult(segment);
+        setParticles(generateParticles(segment.rarity === 'legendary' ? 60 : segment.rarity === 'rare' ? 40 : 20, segment.glowColor));
+        playWinSound(segment.rarity);
+
+        // Update local stats (display only — not used for cooldown)
+        const today = getTodayKey();
+        const prevData = getSpinData();
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayKey = yesterday.toISOString().slice(0, 10);
+        const newStreak = prevData.lastSpin === yesterdayKey ? prevData.streak + 1 : 1;
+
+        const newData: SpinData = {
+          lastSpin: today,
+          totalEarned: prevData.totalEarned + segment.value,
+          spinCount: prevData.spinCount + 1,
+          streak: newStreak,
+        };
+        saveSpinData(newData);
+        setSpinData(newData);
+        setHasSpunToday(true);
+        setCooldownEndTime(Date.now() + (spinResult.cooldownMs || 12 * 60 * 60 * 1000));
+
+        // Update balance if server returned it
+        if (spinResult.balance !== undefined && user) {
+          setUser(prev => prev ? { ...prev, balance: spinResult.balance } : null);
+        }
+
+        setTimeout(() => setShowResult(true), 300);
+      }, 5500);
+    } catch {
+      setIsSpinning(false);
+    }
   }, [isSpinning, hasSpunToday, rotation, playTick, playWinSound, user]);
 
   // Handle COLLECT button click
@@ -326,37 +380,33 @@ export default function SpinWheel() {
       setShowResult(false);
       setShowAuthModal(true);
     } else {
-      // Logged in — just dismiss the result modal
+      // Logged in — balance was already credited by /api/spin/execute
+      // Just dismiss the result modal
       setShowResult(false);
     }
   }, [result, user]);
 
-  // After successful signup/login (mock)
-  const handleAuthenticated = useCallback((authUser: { id: number; username: string; balance: number }) => {
+  // After successful signup/login
+  const handleAuthenticated = useCallback(async (authUser: { id: number; username: string; balance: number }) => {
     setUser(authUser);
-    localStorage.setItem('mockUser', JSON.stringify(authUser));
     setShowAuthModal(false);
 
     // Auto-claim pending reward
     if (pendingReward) {
-      setUser(prev => prev ? { ...prev, balance: prev.balance + pendingReward } : null);
+      try {
+        const res = await fetch('/api/user/claim-spin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amount: pendingReward }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setUser(prev => prev ? { ...prev, balance: data.balance } : null);
+        }
+      } catch { /* silent */ }
       setPendingReward(null);
     }
   }, [pendingReward]);
-
-  // Mock withdrawal handler
-  const handleWithdraw = useCallback((amount: number, walletAddress: string) => {
-    if (user && user.balance >= amount) {
-      const newBalance = user.balance - amount;
-      setUser({ ...user, balance: newBalance });
-      localStorage.setItem('mockUser', JSON.stringify({ ...user, balance: newBalance }));
-      
-      // Show success message
-      alert(`Withdrawal of ${amount} $WHITEWHALE to ${walletAddress} simulated successfully!`);
-      return true;
-    }
-    return false;
-  }, [user]);
 
   if (!mounted) return null;
 
@@ -821,12 +871,7 @@ export default function SpinWheel() {
         isOpen={showWithdrawModal}
         onClose={() => setShowWithdrawModal(false)}
         balance={user?.balance ?? 0}
-        onWithdraw={(amount: number, wallet: string) => {
-          const success = handleWithdraw(amount, wallet);
-          if (success) {
-            setShowWithdrawModal(false);
-          }
-        }}
+        onWithdraw={(newBalance) => setUser(prev => prev ? { ...prev, balance: newBalance } : null)}
       />
     </div>
   );

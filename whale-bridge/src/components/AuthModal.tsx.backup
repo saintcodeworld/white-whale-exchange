@@ -62,28 +62,6 @@ const submitStyle: React.CSSProperties = {
   marginTop: 4,
 };
 
-// Mock user storage
-const getMockUsers = () => {
-  if (typeof window === 'undefined') return {};
-  try {
-    const stored = localStorage.getItem('mockUsers');
-    return stored ? JSON.parse(stored) : {};
-  } catch {
-    return {};
-  }
-};
-
-const saveMockUsers = (users: any) => {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem('mockUsers', JSON.stringify(users));
-};
-
-const getNextUserId = () => {
-  const users = getMockUsers();
-  const maxId = Math.max(0, ...Object.values(users).map((user: any) => user.id));
-  return maxId + 1;
-};
-
 export default function AuthModal({ isOpen, onClose, onAuthenticated, pendingReward }: AuthModalProps) {
   const [mode, setMode] = useState<'signup' | 'login'>('signup');
   const [username, setUsername] = useState('');
@@ -97,70 +75,24 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, pendingRew
     setLoading(true);
 
     try {
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const endpoint = mode === 'signup' ? '/api/auth/signup' : '/api/auth/login';
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
 
-      const users = getMockUsers();
+      const data = await res.json();
 
-      if (mode === 'signup') {
-        // Check if username already exists
-        if (users[username]) {
-          setError('Username already exists');
-          setLoading(false);
-          return;
-        }
-
-        // Create new user
-        const newUser = {
-          id: getNextUserId(),
-          username,
-          password, // In production, this would be hashed
-          balance: pendingReward || 0,
-          createdAt: new Date().toISOString()
-        };
-
-        users[username] = newUser;
-        saveMockUsers(users);
-
-        // Store current user session
-        localStorage.setItem('mockUser', JSON.stringify({
-          id: newUser.id,
-          username: newUser.username,
-          balance: newUser.balance
-        }));
-
-        onAuthenticated({
-          id: newUser.id,
-          username: newUser.username,
-          balance: newUser.balance
-        });
-      } else {
-        // Login
-        const user = users[username];
-        if (!user || user.password !== password) {
-          setError('Invalid username or password');
-          setLoading(false);
-          return;
-        }
-
-        // Store current user session
-        const userSession = {
-          id: user.id,
-          username: user.username,
-          balance: user.balance + (pendingReward || 0)
-        };
-        localStorage.setItem('mockUser', JSON.stringify(userSession));
-
-        // Update user balance if there's a pending reward
-        if (pendingReward) {
-          users[username].balance += pendingReward;
-          saveMockUsers(users);
-        }
-
-        onAuthenticated(userSession);
+      if (!res.ok) {
+        setError(data.error || 'Something went wrong');
+        setLoading(false);
+        return;
       }
+
+      onAuthenticated(data.user);
     } catch {
-      setError('An error occurred. Please try again.');
+      setError('Network error. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -342,21 +274,6 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, pendingRew
                   </button>
                 </>
               )}
-            </div>
-
-            {/* Demo Info */}
-            <div style={{
-              textAlign: 'center',
-              marginTop: 16,
-              padding: 12,
-              borderRadius: 8,
-              background: 'rgba(255,224,102,0.1)',
-              border: '1px solid rgba(255,224,102,0.2)',
-              fontFamily: "'Fredoka', sans-serif",
-              fontSize: 11,
-              color: 'rgba(255,224,102,0.8)',
-            }}>
-              💡 Demo Mode: Use any username/password to test
             </div>
           </motion.div>
         </motion.div>

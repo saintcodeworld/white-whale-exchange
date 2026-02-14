@@ -7,7 +7,7 @@ interface WithdrawModalProps {
   isOpen: boolean;
   onClose: () => void;
   balance: number;
-  onWithdraw: (amount: number, walletAddress: string) => void;
+  onWithdraw: (newBalance: number) => void;
 }
 
 const overlayStyle: React.CSSProperties = {
@@ -105,20 +105,23 @@ export default function WithdrawModal({ isOpen, onClose, balance, onWithdraw }: 
       return;
     }
 
-    // Basic wallet address validation
-    if (walletAddress.length < 32) {
-      setError('Please enter a valid Solana wallet address');
-      setLoading(false);
-      return;
-    }
-
     try {
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const res = await fetch('/api/user/withdraw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: numAmount, walletAddress }),
+      });
 
-      // Mock withdrawal success
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || 'Withdrawal failed');
+        setLoading(false);
+        return;
+      }
+
       setSuccess(true);
-      onWithdraw(numAmount, walletAddress);
+      onWithdraw(data.balance);
     } catch {
       setError('Network error. Please try again.');
     } finally {
@@ -173,10 +176,7 @@ export default function WithdrawModal({ isOpen, onClose, balance, onWithdraw }: 
                   maxWidth: 300,
                 }}>
                   Your withdrawal of <strong style={{ color: '#00f7ff' }}>{parseFloat(amount).toLocaleString()} $WHITEWHALE</strong> has been submitted.
-                  <br />
-                  <span style={{ fontSize: 12, color: 'rgba(255,224,102,0.8)' }}>
-                    🎭 Demo: This is a simulation - no actual tokens will be sent
-                  </span>
+                  Tokens will be sent to your wallet shortly.
                 </p>
                 <button
                   onClick={handleClose}
@@ -292,21 +292,6 @@ export default function WithdrawModal({ isOpen, onClose, balance, onWithdraw }: 
                     {loading ? 'Processing...' : 'WITHDRAW'}
                   </button>
                 </form>
-
-                {/* Demo Info */}
-                <div style={{
-                  textAlign: 'center',
-                  marginTop: 16,
-                  padding: 12,
-                  borderRadius: 8,
-                  background: 'rgba(255,224,102,0.1)',
-                  border: '1px solid rgba(255,224,102,0.2)',
-                  fontFamily: "'Fredoka', sans-serif",
-                  fontSize: 11,
-                  color: 'rgba(255,224,102,0.8)',
-                }}>
-                  💡 Demo Mode: Any wallet address works for testing
-                </div>
               </>
             )}
           </motion.div>
